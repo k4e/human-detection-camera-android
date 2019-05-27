@@ -139,7 +139,7 @@ public class HumanDetectionCameraPreview extends SurfaceView implements SurfaceH
         int height = getHeight();
         Bitmap bitmap = mProcessedBitmap != null ? mProcessedBitmap : mOriginalBitmap;
         if (bitmap != null) {
-            canvas.drawBitmap(mProcessedBitmap, null,
+            canvas.drawBitmap(bitmap, null,
                     new android.graphics.Rect(0, 0, canvas.getWidth(), canvas.getHeight()), bitmapPaint);
         }
         if (isSightOn()) {
