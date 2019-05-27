@@ -20,6 +20,12 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal">
 
+            <Spinner
+                android:id="@+id/resolutionSpinner"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:layout_weight="1" />
+
             <Button
                 android:id="@+id/cameraSwitchButton"
                 android:layout_width="wrap_content"

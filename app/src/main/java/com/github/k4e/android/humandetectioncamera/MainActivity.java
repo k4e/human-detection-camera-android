@@ -1,5 +1,6 @@
 package com.github.k4e.android.humandetectioncamera;
 
+import android.content.Context;
 import android.content.DialogInterface;
 import android.hardware.Camera;
 import android.support.v7.app.AlertDialog;
@@ -9,11 +10,16 @@ import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.Space;
+import android.widget.Spinner;
+import android.widget.SpinnerAdapter;
+import android.widget.Toast;
 import android.widget.ToggleButton;
 
 import org.opencv.android.OpenCVLoader;
@@ -35,7 +41,14 @@ public class MainActivity extends AppCompatActivity {
         System.loadLibrary("opencv_java4");
     }
 
+    private Context mContext;
     private HumanDetectionCameraPreview mPreview;
+    private int mCameraInfo;
+    private int mCameraWidth;
+    private int mCameraHeight;
+    private Spinner mResolutionSpinner;
+    private List<Camera.Size> mSupportedCameraSizes;
+    private AdapterView.OnItemSelectedListener mOnResolutionSpinnerSelected;
     private boolean mFlagContinuousUpdateConfirmPassed = false;
 
     @Override
@@ -43,12 +56,17 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        mContext = this;
+        mCameraInfo = Camera.CameraInfo.CAMERA_FACING_BACK;
+        mCameraWidth = 640;
+        mCameraHeight = 480;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         try {
             copyAssets("haarcascades");
         } catch (IOException e) {
             e.printStackTrace();
         }
+        mResolutionSpinner = findViewById(R.id.resolutionSpinner);
         final Button cameraSwitchButton = findViewById(R.id.cameraSwitchButton);
         final ToggleButton snapshotButton = findViewById(R.id.snapshotButton);
         final Button unsetButton = findViewById(R.id.unsetButton);
@@ -60,11 +78,7 @@ public class MainActivity extends AppCompatActivity {
                 faceCheck, bodyCheck, sightToggle, inpaintToggle);
         final LinearLayout pvLayer = findViewById(R.id.previewLayer);
         mPreview = createView(
-                Camera.CameraInfo.CAMERA_FACING_BACK,
-                faceCheck.isChecked(),
-                bodyCheck.isChecked(),
-                sightToggle.isChecked(),
-                inpaintToggle.isChecked());
+                faceCheck.isChecked(), bodyCheck.isChecked(), sightToggle.isChecked(), inpaintToggle.isChecked());
         snapshotButton.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 final ToggleButton tb = (ToggleButton) v;
@@ -73,36 +87,60 @@ public class MainActivity extends AppCompatActivity {
                     tb.setChecked(true);
                 } else {
                     onContinuousUpdate(new Runnable() {
-                        @Override public void run() {
+                        @Override
+                        public void run() {
                             mPreview.startPreview();
                             tb.setChecked(false);
                         }
-                    }, null, !mPreview.isSomeProcessingEnable());
+                    }, new Runnable() {
+                        @Override public void run() {
+                            tb.setChecked(true);
+                        }
+                    }, !mPreview.isSomeProcessingEnable());
                 }
             }
         });
         cameraSwitchButton.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
+                for (CompoundButton cb : flagCompoundButtons) {
+                    cb.setChecked(false);
+                }
                 int cameraInfo = mPreview.getCameraInfo();
-                int newCameraInfo;
                 if (cameraInfo == Camera.CameraInfo.CAMERA_FACING_BACK) {
-                    newCameraInfo = Camera.CameraInfo.CAMERA_FACING_FRONT;
+                    mCameraInfo = Camera.CameraInfo.CAMERA_FACING_FRONT;
                 } else {
-                    newCameraInfo = Camera.CameraInfo.CAMERA_FACING_BACK;
+                    mCameraInfo = Camera.CameraInfo.CAMERA_FACING_BACK;
                 }
                 mPreview.closeCamera();
                 pvLayer.removeAllViews();
                 mPreview = createView(
-                        newCameraInfo,
-                        faceCheck.isChecked(),
-                        bodyCheck.isChecked(),
-                        sightToggle.isChecked(),
-                        inpaintToggle.isChecked());
+                        faceCheck.isChecked(), bodyCheck.isChecked(),
+                        sightToggle.isChecked(), inpaintToggle.isChecked());
                 pvLayer.addView(mPreview, new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
                 snapshotButton.setChecked(false);
             }
         });
+        mOnResolutionSpinnerSelected = new AdapterView.OnItemSelectedListener() {
+                @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                    if (mSupportedCameraSizes != null && position < mSupportedCameraSizes.size()) {
+                        for (CompoundButton cb : flagCompoundButtons) {
+                            cb.setChecked(false);
+                        }
+                        Camera.Size newSize = mSupportedCameraSizes.get(position);
+                        mCameraWidth = newSize.width;
+                        mCameraHeight = newSize.height;
+                        mPreview.closeCamera();
+                        pvLayer.removeAllViews();
+                        mPreview = createView(faceCheck.isChecked(), bodyCheck.isChecked(),
+                                sightToggle.isChecked(), inpaintToggle.isChecked());
+                        pvLayer.addView(mPreview, new LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                        snapshotButton.setChecked(false);
+                    }
+                }
+                @Override public void onNothingSelected(AdapterView<?> parent) { }
+        };
         unsetButton.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 mPreview.unsetAll();
@@ -165,16 +203,14 @@ public class MainActivity extends AppCompatActivity {
         inpaintToggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override public void onCheckedChanged(final CompoundButton buttonView, final boolean isChecked) {
                 onContinuousUpdate(new Runnable() {
-                    @Override
-                    public void run() {
+                    @Override public void run() {
                         mPreview.setInpaintingOn(isChecked);
                         if (!mPreview.isPreviewWorking()) {
                             mPreview.reprocess();
                         }
                     }
                 }, new Runnable() {
-                    @Override
-                    public void run() {
+                    @Override public void run() {
                         buttonView.setChecked(false);
                     }
                 }, !isChecked || !mPreview.isPreviewWorking());
@@ -210,25 +246,53 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private HumanDetectionCameraPreview createView(
-            int cameraInfo,
-            boolean faceDetectionEnabled,
-            boolean bodyDetectionEnabled,
-            boolean sightOn,
-            boolean inpaintingOn
-    ) {
+            boolean faceDetectionEnabled, boolean bodyDetectionEnabled, boolean sightOn, boolean inpaintingOn) {
         String pathToAssets = getFilesDir().getAbsolutePath();
         return new HumanDetectionCameraPreview(
                 this,
-                640,
-                480,
+                mCameraWidth,
+                mCameraHeight,
                 0,
                 pathToAssets + "/haarcascades/haarcascade_frontalface_alt.xml",
                 pathToAssets + "/haarcascades/haarcascade_fullbody.xml",
-                cameraInfo,
+                mCameraInfo,
                 faceDetectionEnabled,
                 bodyDetectionEnabled,
                 sightOn,
-                inpaintingOn
+                inpaintingOn,
+                new Runnable() {
+                    @Override public void run() {
+                        mSupportedCameraSizes = mPreview.getSupportedCameraSizes(true);
+                        Camera.Size currentSize = mPreview.getCameraSize();
+                        if (currentSize != null) {
+                            Toast.makeText(mContext, String.format("解像度は %d x %d です", currentSize.width, currentSize.height), Toast.LENGTH_LONG)
+                                    .show();
+                        } else {
+                            Toast.makeText(mContext, "解像度が取得できません", Toast.LENGTH_LONG).show();
+                        }
+                        ArrayAdapter<String> adapter = new ArrayAdapter<>(mContext, R.layout.support_simple_spinner_dropdown_item);
+                        int index = 0;
+                        if (mSupportedCameraSizes != null) {
+                            for (int i = 0; i < mSupportedCameraSizes.size(); ++i) {
+                                Camera.Size size = mSupportedCameraSizes.get(i);
+                                adapter.add(String.format("%d x %d", size.width, size.height));
+                                if (currentSize != null && size.width == currentSize.width && size.height == currentSize.height) {
+                                    index = i;
+                                }
+                            }
+                        } else {
+                            adapter.add("解像度変更不可");
+                        }
+                        mResolutionSpinner.setOnItemSelectedListener(null);
+                        mResolutionSpinner.setAdapter(adapter);
+                        if (index < adapter.getCount()) {
+                            mResolutionSpinner.setSelection(index, false);
+                        }
+                        if (mOnResolutionSpinnerSelected != null) {
+                            mResolutionSpinner.setOnItemSelectedListener(mOnResolutionSpinnerSelected);
+                        }
+                    }
+                }
         );
     }
 

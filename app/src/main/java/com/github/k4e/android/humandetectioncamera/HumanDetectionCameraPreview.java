@@ -49,6 +49,9 @@ public class HumanDetectionCameraPreview extends SurfaceView implements SurfaceH
     private final CascadeClassifier mFaceDetector;
     private final CascadeClassifier mBodyDetector;
     private final List<Pair<Integer, RectF>> mTargets;
+    private boolean mFirstSurfaceChangeFinished;
+    private int mSurfaceWidth;
+    private int mSurfaceHeight;
     private Integer mCameraInfo;
     private Boolean mFaceDetectionEnable;
     private Boolean mBodyDetectionEnable;
@@ -60,6 +63,7 @@ public class HumanDetectionCameraPreview extends SurfaceView implements SurfaceH
     private Bitmap mProcessedBitmap;
     private Mat mImageMat;
     private Mat mMaskMat;
+    private final Runnable mOnSurfaceReady;
 
     public HumanDetectionCameraPreview(
             Context context,
@@ -72,7 +76,8 @@ public class HumanDetectionCameraPreview extends SurfaceView implements SurfaceH
             boolean faceDetectionEnable,
             boolean bodyDetectionEnable,
             boolean sightOn,
-            boolean inpaintingOn
+            boolean inpaintingOn,
+            Runnable onSurfaceReady
     ) {
         super(context);
         setWillNotDraw(false);
@@ -85,12 +90,14 @@ public class HumanDetectionCameraPreview extends SurfaceView implements SurfaceH
         mFaceDetector = new CascadeClassifier();
         mBodyDetector = new CascadeClassifier();
         mTargets = new ArrayList<>();
+        mFirstSurfaceChangeFinished = false;
         mCameraInfo = cameraInfo;
         mFaceDetectionEnable = faceDetectionEnable;
         mBodyDetectionEnable = bodyDetectionEnable;
         mSightOn = sightOn;
         mInpaintingOn = inpaintingOn;
         mPreviewWorking = false;
+        mOnSurfaceReady = onSurfaceReady;
     }
 
     @Override
@@ -113,8 +120,14 @@ public class HumanDetectionCameraPreview extends SurfaceView implements SurfaceH
 
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+        mSurfaceWidth = width;
+        mSurfaceHeight = height;
         cvCleanUp();
         startPreview();
+        if (!mFirstSurfaceChangeFinished) {
+            mFirstSurfaceChangeFinished = true;
+            mOnSurfaceReady.run();
+        }
     }
 
     @Override
@@ -215,6 +228,35 @@ public class HumanDetectionCameraPreview extends SurfaceView implements SurfaceH
         }
     }
 
+    public List<Camera.Size> getSupportedCameraSizes(boolean smallerThanSurface) {
+        if (mCamera == null) {
+            return null;
+        }
+        Camera.Parameters params = mCamera.getParameters();
+        List<Camera.Size> allSizes = params.getSupportedPreviewSizes();
+        List<Camera.Size> enableSizes;
+        if (smallerThanSurface) {
+            List<Camera.Size> szs = new ArrayList<>();
+            for (Camera.Size cs : allSizes) {
+                if (cs.width <= mSurfaceWidth && cs.height <= mSurfaceHeight) {
+                    szs.add(cs);
+                }
+            }
+            enableSizes = Collections.unmodifiableList(szs);
+        } else {
+            enableSizes = allSizes;
+        }
+        return enableSizes;
+    }
+
+    public Camera.Size getCameraSize() {
+        if (mCamera == null) {
+            return null;
+        }
+        Camera.Parameters params = mCamera.getParameters();
+        return params.getPreviewSize();
+    }
+
     public void stopPreview() {
         if (mCamera != null) {
             mCamera.stopPreview();
@@ -241,8 +283,8 @@ public class HumanDetectionCameraPreview extends SurfaceView implements SurfaceH
     private void openCamera() throws IOException {
         mCamera = Camera.open(mCameraInfo);
         Camera.Parameters params = mCamera.getParameters();
-        if (params.getSupportedFocusModes().contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO)) {
-            params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO);
+        if (params.getSupportedFocusModes().contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE)) {
+            params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
             Log.d(TAG, "Set continuous focus mode");
         } else {
             Log.d(TAG, "Continuous focus is not supported");
