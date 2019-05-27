@@ -1,6 +1,8 @@
 package com.github.k4e.android.humandetectioncamera;
 
+import android.content.DialogInterface;
 import android.hardware.Camera;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -21,6 +23,9 @@ import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -31,6 +36,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private HumanDetectionCameraPreview mPreview;
+    private boolean mFlagContinuousUpdateConfirmPassed = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,10 +50,14 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
         final Button cameraSwitchButton = findViewById(R.id.cameraSwitchButton);
+        final ToggleButton snapshotButton = findViewById(R.id.snapshotButton);
+        final Button unsetButton = findViewById(R.id.unsetButton);
         final CheckBox faceCheck = findViewById(R.id.faceCheck);
         final CheckBox bodyCheck = findViewById(R.id.bodyCheck);
         final ToggleButton sightToggle = findViewById(R.id.sightToggle);
         final ToggleButton inpaintToggle = findViewById(R.id.inpaintToggle);
+        final List<CompoundButton> flagCompoundButtons = Arrays.asList(
+                faceCheck, bodyCheck, sightToggle, inpaintToggle);
         final LinearLayout pvLayer = findViewById(R.id.previewLayer);
         mPreview = createView(
                 Camera.CameraInfo.CAMERA_FACING_BACK,
@@ -55,6 +65,22 @@ public class MainActivity extends AppCompatActivity {
                 bodyCheck.isChecked(),
                 sightToggle.isChecked(),
                 inpaintToggle.isChecked());
+        snapshotButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                final ToggleButton tb = (ToggleButton) v;
+                if (mPreview.isPreviewWorking()) {
+                    mPreview.stopPreview();
+                    tb.setChecked(true);
+                } else {
+                    onContinuousUpdate(new Runnable() {
+                        @Override public void run() {
+                            mPreview.startPreview();
+                            tb.setChecked(false);
+                        }
+                    }, null, !mPreview.isSomeProcessingEnable());
+                }
+            }
+        });
         cameraSwitchButton.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 int cameraInfo = mPreview.getCameraInfo();
@@ -74,26 +100,84 @@ public class MainActivity extends AppCompatActivity {
                         inpaintToggle.isChecked());
                 pvLayer.addView(mPreview, new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                snapshotButton.setChecked(false);
+            }
+        });
+        unsetButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                mPreview.unsetAll();
+                for (CompoundButton cb : flagCompoundButtons) {
+                    cb.setChecked(false);
+                }
+                if (!mPreview.isPreviewWorking()) {
+                    mPreview.reprocess();
+                }
             }
         });
         faceCheck.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                mPreview.setFaceDetectionEnable(isChecked);
+            @Override public void onCheckedChanged(final CompoundButton buttonView, final boolean isChecked) {
+                onContinuousUpdate(new Runnable() {
+                    @Override public void run() {
+                        mPreview.setFaceDetectionEnable(isChecked);
+                        if (!mPreview.isPreviewWorking()) {
+                            mPreview.reprocess();
+                        }
+                    }
+                }, new Runnable() {
+                    @Override public void run() {
+                        buttonView.setChecked(false);
+                    }
+                }, !isChecked || !mPreview.isPreviewWorking());
             }
         });
         bodyCheck.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                mPreview.setBodyDetectionEnable(isChecked);
+            @Override public void onCheckedChanged(final CompoundButton buttonView, final boolean isChecked) {
+                onContinuousUpdate(new Runnable() {
+                    @Override public void run() {
+                        mPreview.setBodyDetectionEnable(isChecked);
+                        if (!mPreview.isPreviewWorking()) {
+                            mPreview.reprocess();
+                        }
+                    }
+                }, new Runnable() {
+                    @Override public void run() {
+                        buttonView.setChecked(false);
+                    }
+                }, !isChecked || !mPreview.isPreviewWorking());
             }
         });
         sightToggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                mPreview.setSightOn(isChecked);
+            @Override public void onCheckedChanged(final CompoundButton buttonView, final boolean isChecked) {
+                onContinuousUpdate(new Runnable() {
+                    @Override public void run() {
+                        mPreview.setSightOn(isChecked);
+                        if (!mPreview.isPreviewWorking()) {
+                            mPreview.reprocess();
+                        }
+                    }
+                }, new Runnable() {
+                    @Override public void run() {
+                        buttonView.setChecked(false);
+                    }
+                }, !isChecked || !mPreview.isPreviewWorking());
             }
         });
         inpaintToggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                mPreview.setInpaintingOn(isChecked);
+            @Override public void onCheckedChanged(final CompoundButton buttonView, final boolean isChecked) {
+                onContinuousUpdate(new Runnable() {
+                    @Override
+                    public void run() {
+                        mPreview.setInpaintingOn(isChecked);
+                        if (!mPreview.isPreviewWorking()) {
+                            mPreview.reprocess();
+                        }
+                    }
+                }, new Runnable() {
+                    @Override
+                    public void run() {
+                        buttonView.setChecked(false);
+                    }
+                }, !isChecked || !mPreview.isPreviewWorking());
             }
         });
         pvLayer.addView(mPreview, new LinearLayout.LayoutParams(
@@ -147,4 +231,31 @@ public class MainActivity extends AppCompatActivity {
                 inpaintingOn
         );
     }
+
+    private void onContinuousUpdate(
+            final Runnable doIfOk, final Runnable doIfCancel, boolean alwaysOk) {
+        if (alwaysOk || mFlagContinuousUpdateConfirmPassed) {
+            doIfOk.run();
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("警告")
+                .setMessage("リアルタイムに画像処理を行いますか?\n動作が重くなるかもしれません．")
+                .setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface dialog, int which) {
+                        mFlagContinuousUpdateConfirmPassed = true;
+                        doIfOk.run();
+                    }
+                })
+                .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface dialog, int which) {
+                        if (doIfCancel != null) {
+                            doIfCancel.run();
+                        }
+                    }
+                })
+                .show();
+    }
+
+
 }

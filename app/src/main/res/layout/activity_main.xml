@@ -27,57 +27,79 @@
                 android:layout_weight="1"
                 android:text="カメラ切替" />
 
-            <TextView
-                android:id="@+id/textView"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="検出するもの:"
-                android:textAlignment="center" />
-
-            <CheckBox
-                android:id="@+id/faceCheck"
+            <ToggleButton
+                android:id="@+id/snapshotButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:checked="false"
-                android:text="顔" />
-
-            <CheckBox
-                android:id="@+id/bodyCheck"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:checked="true"
-                android:text="体" />
-
-            <ToggleButton
-                android:id="@+id/sightToggle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:checked="false"
-                android:text="枠"
-                android:textOff="枠 OFF"
-                android:textOn="枠 ON" />
-
-            <ToggleButton
-                android:id="@+id/inpaintToggle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:checked="true"
-                android:text="補完"
-                android:textOff="補完 OFF"
-                android:textOn="補完 ON" />
+                android:text="スナップショット"
+                android:textOff="スナップショット"
+                android:textOn="再開" />
 
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/previewLayer"
             android:layout_width="fill_parent"
             android:layout_height="fill_parent"
-            android:orientation="horizontal"></LinearLayout>
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="vertical">
+
+                <Button
+                    android:id="@+id/unsetButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="リセット" />
+
+                <CheckBox
+                    android:id="@+id/faceCheck"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:checked="false"
+                    android:text="顔" />
+
+                <CheckBox
+                    android:id="@+id/bodyCheck"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:checked="false"
+                    android:text="体" />
+
+                <ToggleButton
+                    android:id="@+id/sightToggle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:checked="false"
+                    android:text="枠"
+                    android:textOff="枠 OFF"
+                    android:textOn="枠 ON" />
+
+                <ToggleButton
+                    android:id="@+id/inpaintToggle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:checked="false"
+                    android:text="補完"
+                    android:textOff="補完 OFF"
+                    android:textOn="補完 ON" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/previewLayer"
+                android:layout_width="fill_parent"
+                android:layout_height="fill_parent"
+                android:orientation="vertical"></LinearLayout>
+        </LinearLayout>
 
     </LinearLayout>
 

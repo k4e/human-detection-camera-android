@@ -54,8 +54,10 @@ public class HumanDetectionCameraPreview extends SurfaceView implements SurfaceH
     private Boolean mBodyDetectionEnable;
     private Boolean mSightOn;
     private Boolean mInpaintingOn;
+    private Boolean mPreviewWorking;
     private Camera mCamera;
-    private Bitmap mBitmap;
+    private Bitmap mOriginalBitmap;
+    private Bitmap mProcessedBitmap;
     private Mat mImageMat;
     private Mat mMaskMat;
 
@@ -88,6 +90,7 @@ public class HumanDetectionCameraPreview extends SurfaceView implements SurfaceH
         mBodyDetectionEnable = bodyDetectionEnable;
         mSightOn = sightOn;
         mInpaintingOn = inpaintingOn;
+        mPreviewWorking = false;
     }
 
     @Override
@@ -111,7 +114,7 @@ public class HumanDetectionCameraPreview extends SurfaceView implements SurfaceH
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
         cvCleanUp();
-        mCamera.startPreview();
+        startPreview();
     }
 
     @Override
@@ -124,11 +127,152 @@ public class HumanDetectionCameraPreview extends SurfaceView implements SurfaceH
     public void onPreviewFrame(byte[] data, Camera camera) {
         int pvWidth = camera.getParameters().getPreviewSize().width;
         int pvHeight = camera.getParameters().getPreviewSize().height;
-        Bitmap bitmap = yuvToBitmap(data, pvWidth, pvHeight, mDisplayOrientation);
+        mOriginalBitmap = yuvToBitmap(data, pvWidth, pvHeight, mDisplayOrientation);
+        processImage(pvWidth, pvHeight);
+        invalidate();
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+        Paint bitmapPaint = new Paint();
+        int width = getWidth();
+        int height = getHeight();
+        Bitmap bitmap = mProcessedBitmap != null ? mProcessedBitmap : mOriginalBitmap;
+        if (bitmap != null) {
+            canvas.drawBitmap(mProcessedBitmap, null,
+                    new android.graphics.Rect(0, 0, canvas.getWidth(), canvas.getHeight()), bitmapPaint);
+        }
+        if (isSightOn()) {
+            Paint greenPaint = new Paint();
+            greenPaint.setColor(Color.GREEN);
+            greenPaint.setStyle(Paint.Style.STROKE);
+            greenPaint.setStrokeWidth(4f);
+            Paint redPaint = new Paint();
+            redPaint.setColor(Color.RED);
+            redPaint.setStyle(Paint.Style.STROKE);
+            redPaint.setStrokeWidth(4f);
+            for (Pair<Integer, RectF> target : mTargets) {
+                Paint p = target.first == TARGET_FACE ? greenPaint : redPaint;
+                RectF tr = target.second;
+                RectF sr = new RectF(width * tr.left, height * tr.top, width * tr.right, height * tr.bottom);
+                canvas.drawRect(sr, p);
+            }
+        }
+    }
+
+    public int getCameraInfo() {
+        return mCameraInfo;
+    }
+
+    public boolean isFaceDetectionEnable() {
+        return mFaceDetectionEnable;
+    }
+
+    public boolean isBodyDetectionEnable() {
+        return mBodyDetectionEnable;
+    }
+
+    public boolean isSightOn() {
+        return mSightOn;
+    }
+
+    public boolean isInpaintingOn() {
+        return mInpaintingOn;
+    }
+
+    public boolean isSomeProcessingEnable() {
+        return mFaceDetectionEnable || mBodyDetectionEnable || mSightOn || mInpaintingOn;
+    }
+
+    public boolean isPreviewWorking() {
+        return mPreviewWorking;
+    }
+
+    public void setFaceDetectionEnable(boolean b) {
+        mFaceDetectionEnable = b;
+    }
+
+    public void setBodyDetectionEnable(boolean b) {
+        mBodyDetectionEnable = b;
+    }
+
+    public void setSightOn(boolean b) {
+        mSightOn = b;
+    }
+
+    public void setInpaintingOn(boolean b) {
+        mInpaintingOn = b;
+    }
+
+    public void unsetAll() {
+        mFaceDetectionEnable = mBodyDetectionEnable = mSightOn = mInpaintingOn = false;
+    }
+
+    public void startPreview() {
+        if (mCamera != null) {
+            mCamera.startPreview();
+            mPreviewWorking = true;
+        }
+    }
+
+    public void stopPreview() {
+        if (mCamera != null) {
+            mCamera.stopPreview();
+            mPreviewWorking = false;
+        }
+    }
+
+    public void reprocess() {
+        int pvWidth = mCamera.getParameters().getPreviewSize().width;
+        int pvHeight = mCamera.getParameters().getPreviewSize().height;
+        processImage(pvWidth, pvHeight);
+        invalidate();
+    }
+
+    public void closeCamera() {
+        if (mCamera != null) {
+            stopPreview();
+            mCamera.setPreviewCallback(null);
+            mCamera.release();
+            mCamera = null;
+        }
+    }
+
+    private void openCamera() throws IOException {
+        mCamera = Camera.open(mCameraInfo);
+        Camera.Parameters params = mCamera.getParameters();
+        if (params.getSupportedFocusModes().contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO)) {
+            params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO);
+            Log.d(TAG, "Set continuous focus mode");
+        } else {
+            Log.d(TAG, "Continuous focus is not supported");
+        }
+        params.setPreviewSize(mPreviewWidth, mPreviewHeight);
+        mCamera.setParameters(params);
+        mCamera.setDisplayOrientation(mDisplayOrientation);
+        mCamera.setPreviewDisplay(getHolder());
+        mCamera.setPreviewCallback(this);
+    }
+
+    private Bitmap yuvToBitmap(byte[] data, int width, int height, int rotation) {
+        YuvImage yuvImage = new YuvImage(data, ImageFormat.NV21, width, height, null);
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        yuvImage.compressToJpeg(new android.graphics.Rect(0, 0, width, height), 80, bout);
+        byte[] jdata = bout.toByteArray();
+        BitmapFactory.Options bfOpts = new BitmapFactory.Options();
+        bfOpts.inPreferredConfig = Bitmap.Config.RGB_565;
+        Bitmap bitmap = BitmapFactory.decodeByteArray(jdata, 0, jdata.length, bfOpts);
+        return bitmap;
+    }
+
+    private void processImage(int pvWidth, int pvHeight) {
+        if (mOriginalBitmap == null) {
+            return;
+        }
         if (mImageMat == null) {
             mImageMat = new Mat();
         }
-        Utils.bitmapToMat(bitmap, mImageMat);
+        Utils.bitmapToMat(mOriginalBitmap, mImageMat);
         if ((mDisplayOrientation - 90) % 180 == 0) {
             int oldWith = pvWidth;
             pvWidth = pvHeight;
@@ -167,8 +311,8 @@ public class HumanDetectionCameraPreview extends SurfaceView implements SurfaceH
             }
         }
         mMaskMat = Mat.zeros(pvHeight, pvWidth, CvType.CV_8UC1);
-        if (mBitmap == null) {
-            mBitmap = Bitmap.createBitmap(mPreviewWidth, mPreviewHeight, Bitmap.Config.ARGB_8888);
+        if (mProcessedBitmap == null) {
+            mProcessedBitmap = Bitmap.createBitmap(mPreviewWidth, mPreviewHeight, Bitmap.Config.ARGB_8888);
         }
         if (isInpaintingOn() && somethingDetected) {
             for (Rect rect : faceRects) {
@@ -181,113 +325,10 @@ public class HumanDetectionCameraPreview extends SurfaceView implements SurfaceH
             Mat mInpaintOutMat = new Mat(mImageMat.width(), mImageMat.height(), CvType.CV_8UC3);
             Imgproc.cvtColor(mImageMat, mInpaintInMat, Imgproc.COLOR_BGRA2BGR);
             Photo.inpaint(mInpaintInMat, mMaskMat, mInpaintOutMat, 1, Photo.INPAINT_TELEA);
-            Utils.matToBitmap(mInpaintOutMat, mBitmap);
+            Utils.matToBitmap(mInpaintOutMat, mProcessedBitmap);
         } else {
-            Utils.matToBitmap(mImageMat, mBitmap);
+            Utils.matToBitmap(mImageMat, mProcessedBitmap);
         }
-        invalidate();
-    }
-
-    @Override
-    protected void onDraw(Canvas canvas) {
-        Paint bitmapPaint = new Paint();
-        int width = getWidth();
-        int height = getHeight();
-        if (mBitmap != null) {
-            canvas.drawBitmap(mBitmap, null,
-                    new android.graphics.Rect(0, 0, canvas.getWidth(), canvas.getHeight()), bitmapPaint);
-        }
-        if (isSightOn()) {
-            Paint greenPaint = new Paint();
-            greenPaint.setColor(Color.GREEN);
-            greenPaint.setStyle(Paint.Style.STROKE);
-            greenPaint.setStrokeWidth(4f);
-            Paint redPaint = new Paint();
-            redPaint.setColor(Color.RED);
-            redPaint.setStyle(Paint.Style.STROKE);
-            redPaint.setStrokeWidth(4f);
-            // if (mCameraInfo == Camera.CameraInfo.CAMERA_FACING_FRONT) {
-            //    canvas.scale(-1f, 1f, width / 2, height / 2);
-            // }
-            for (Pair<Integer, RectF> target : mTargets) {
-                Paint p = target.first == TARGET_FACE ? greenPaint : redPaint;
-                RectF tr = target.second;
-                RectF sr = new RectF(width * tr.left, height * tr.top, width * tr.right, height * tr.bottom);
-                canvas.drawRect(sr, p);
-            }
-        }
-    }
-
-    public int getCameraInfo() {
-        return mCameraInfo;
-    }
-
-    public boolean isFaceDetectionEnable() {
-        return mFaceDetectionEnable;
-    }
-
-    public boolean isBodyDetectionEnable() {
-        return mBodyDetectionEnable;
-    }
-
-    public boolean isSightOn() {
-        return mSightOn;
-    }
-
-    public boolean isInpaintingOn() {
-        return mInpaintingOn;
-    }
-
-    public void setFaceDetectionEnable(boolean b) {
-        mFaceDetectionEnable = b;
-    }
-
-    public void setBodyDetectionEnable(boolean b) {
-        mBodyDetectionEnable = b;
-    }
-
-    public void setSightOn(boolean b) {
-        mSightOn = b;
-    }
-
-    public void setInpaintingOn(boolean b) {
-        mInpaintingOn = b;
-    }
-
-    private void openCamera() throws IOException {
-        mCamera = Camera.open(mCameraInfo);
-        Camera.Parameters params = mCamera.getParameters();
-        if (params.getSupportedFocusModes().contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO)) {
-            params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO);
-            Log.d(TAG, "Set continuous focus mode");
-        } else {
-            Log.d(TAG, "Continuous focus is not supported");
-        }
-        params.setPreviewSize(mPreviewWidth, mPreviewHeight);
-        mCamera.setParameters(params);
-        mCamera.setDisplayOrientation(mDisplayOrientation);
-        mCamera.setPreviewDisplay(getHolder());
-        mCamera.setPreviewCallback(this);
-    }
-
-    public void closeCamera() {
-        if (mCamera != null) {
-            mCamera.stopPreview();
-            mCamera.setPreviewCallback(null);
-            mCamera.release();
-            mCamera = null;
-        }
-    }
-
-    private Bitmap yuvToBitmap(byte[] data, int width, int height, int rotation) {
-        YuvImage yuvImage = new YuvImage(data, ImageFormat.NV21, width, height, null);
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        yuvImage.compressToJpeg(new android.graphics.Rect(0, 0, width, height), 80, bout);
-        byte[] jdata = bout.toByteArray();
-        BitmapFactory.Options bfOpts = new BitmapFactory.Options();
-        bfOpts.inPreferredConfig = Bitmap.Config.RGB_565;
-        Bitmap bitmap = BitmapFactory.decodeByteArray(jdata, 0, jdata.length, bfOpts);
-        return bitmap;
     }
 
     private void addTarget(int pvWidth, int pvHeight, Rect rect, int targetType) {
@@ -321,11 +362,11 @@ public class HumanDetectionCameraPreview extends SurfaceView implements SurfaceH
             mMaskMat.release();
             mMaskMat = null;
         }
-        if (mBitmap != null) {
-            if (!mBitmap.isRecycled()) {
-                mBitmap.recycle();
+        if (mProcessedBitmap != null) {
+            if (!mProcessedBitmap.isRecycled()) {
+                mProcessedBitmap.recycle();
             }
-            mBitmap = null;
+            mProcessedBitmap = null;
         }
         mTargets.clear();
     }
